@@ -43,9 +43,45 @@ function LoginForm() {
   };
 
   return (
-    <Row justify="center" align="middle" style={{ height: '100vh', backgroundColor: '#f5f5f5' }}>
-      <Col xs={24} sm={20} md={12} lg={8} xl={6}>
-        <Card variant={"outlined"} style={{ borderRadius: 8, padding: 24, boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.1)' }}>
+    <Row style={{ height: '100vh' }}>
+      {/* Left column — hidden on small screens */}
+      <Col
+        xs={0}
+        md={12}
+        style={{
+          backgroundColor: '#1677ff',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '48px',
+          gap: '16px',
+        }}
+      >
+        <Title level={1} style={{ color: '#fff', margin: 0, letterSpacing: 1 }}>
+          AttendMon
+        </Title>
+        <Title level={3} style={{ color: 'rgba(255,255,255,0.85)', textAlign: 'center', margin: 0, fontWeight: 400 }}>
+          Team attendance monitoring made easy.
+        </Title>
+      </Col>
+
+      {/* Right column — full width on small screens */}
+      <Col
+        xs={24}
+        md={12}
+        style={{
+          backgroundColor: '#f5f5f5',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '32px 16px',
+        }}
+      >
+        <Card
+          variant="outlined"
+          style={{ borderRadius: 8, padding: 24, boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.1)', width: '100%', maxWidth: 400 }}
+        >
           <Title level={2} style={{ textAlign: 'center' }}>Login</Title>
           {error && <Text type="danger">{error}</Text>}
 

@@ -912,7 +912,10 @@ const handleNewMemberFormChange = async () => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" collapsible   breakpoint="md">
+      <Sider theme="dark" collapsible breakpoint="md">
+        <div style={{ padding: '16px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Title level={4} style={{ color: '#fff', margin: 0, letterSpacing: 1 }}>AttendMon</Title>
+        </div>
         <Menu theme="dark" mode="inline" selectedKeys={[selectedKey]} onClick={handleMenuClick}>
           <Menu.Item key="home" icon={<HomeOutlined />}>Home</Menu.Item>
           <Menu.Item key="activeMembers" icon={<TeamOutlined />}>Active Members</Menu.Item>

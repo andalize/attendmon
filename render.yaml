@@ -1,5 +1,5 @@
 services:
-  - name: choir-attendance-tracker-api
+  - name: attendmon-api
     type: web
     runtime: node
     env: node
@@ -13,7 +13,7 @@ services:
         value: mongodb+srv://rwibutsomo:s2qeSadSNLQ8Twvh@cluster0.j41ak.mongodb.net/choir_db?retryWrites=true&w=majority&appName=Cluster0
 
 
-  - name: choir-attendance-tracker
+  - name: attendmon
     type: web
     runtime: static
     buildCommand: |
@@ -24,4 +24,4 @@ services:
 
     envVars:
       - key: REACT_APP_API_BASE
-        value: "https://choir-attendance-tracker-api.onrender.com"
+        value: "https://attendmon-api.onrender.com"
