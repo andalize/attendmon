@@ -1,27 +1,13 @@
 services:
-  - name: attendmon-api
+  - name: attendmon
     type: web
     runtime: node
     env: node
     plan: free
-    buildCommand: |
-      cd client && npm install && npm run build && \
-      cd ../server && npm install
-    startCommand: cd server && node index.js
+    buildCommand: npm install --prefix client && npm run build --prefix client && npm install --prefix server
+    startCommand: node server/index.js
     envVars:
       - key: MONGO_URI
-        value: mongodb+srv://rwibutsomo:s2qeSadSNLQ8Twvh@cluster0.j41ak.mongodb.net/choir_db?retryWrites=true&w=majority&appName=Cluster0
-
-
-  - name: attendmon
-    type: web
-    runtime: static
-    buildCommand: |
-      cd client
-      npm install
-      npm run build
-    staticPublishPath: ./client/build
-
-    envVars:
-      - key: REACT_APP_API_BASE
-        value: "https://attendmon-api.onrender.com"
+        sync: false
+      - key: JWT_SECRET
+        sync: false
