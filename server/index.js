@@ -12,6 +12,7 @@ const memberRoutes = require('./routes/members');
 const sessionRoutes = require('./routes/sessions');
 const statsRoutes = require('./routes/stats');
 const authRoutes = require('./routes/auth');
+const contributionRoutes = require('./routes/contributions');
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api/v1', authRoutes);
 app.use('/api/v1', memberRoutes);
 app.use('/api/v1', sessionRoutes);
 app.use('/api/v1', statsRoutes);
+app.use('/api/v1', contributionRoutes);
 
 // Serve React frontend
 app.use(express.static(path.join(__dirname, '../client/build')));

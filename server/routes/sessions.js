@@ -17,8 +17,12 @@ router.post('/choir-sessions', authMiddleware, adminMiddleware, async (req, res)
         }
         const newSession = new ChoirSession({
           sessionType,
-          members,
-          sessionDate
+          sessionDate,
+          members: members.map(({ member, hasAttended, absenceReason }) => ({
+            member,
+            hasAttended,
+            absenceReason: hasAttended ? null : (absenceReason || null),
+          })),
         });
 
         await newSession.save();
@@ -33,10 +37,19 @@ router.post('/choir-sessions', authMiddleware, adminMiddleware, async (req, res)
 router.get('/choir-sessions', authMiddleware, adminMiddleware, async (req, res) => {
 
     try {
-        const choirSessions = await ChoirSession.find()
-        .populate('members.member', 'name phone')
-        .sort({ sessionDate: -1 })
-        .limit(1);
+        const { fromDate, toDate } = req.query;
+
+        const filter = {};
+        if (fromDate && toDate) {
+            filter.sessionDate = {
+                $gte: new Date(fromDate),
+                $lte: new Date(toDate),
+            };
+        }
+
+        const choirSessions = await ChoirSession.find(filter)
+            .populate('members.member', 'name phone')
+            .sort({ sessionDate: -1 });
 
         res.status(200).json(choirSessions);
     } catch (error) {
@@ -46,7 +59,7 @@ router.get('/choir-sessions', authMiddleware, adminMiddleware, async (req, res) 
 
 router.patch('/choir-sessions/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-      const { memberId, hasAttended, sessionDate, sessionType } = req.body.data;
+      const { memberId, hasAttended, absenceReason, sessionDate, sessionType } = req.body.data;
       const sessionId = req.params.id;
 
       const session = await ChoirSession.findById(sessionId);
@@ -59,7 +72,8 @@ router.patch('/choir-sessions/:id', authMiddleware, adminMiddleware, async (req,
       const memberIndex = session.members.findIndex(m => m.member.toString() === memberObjectId.toString());
 
       if (memberIndex !== -1) {
-          session.members[memberIndex].hasAttended =  hasAttended;
+          session.members[memberIndex].hasAttended = hasAttended;
+          session.members[memberIndex].absenceReason = hasAttended ? null : (absenceReason || null);
           await session.save();
       }else if(sessionType && sessionDate){
         session.sessionType = sessionType ? sessionType : session.sessionType;
