@@ -17,6 +17,11 @@ const choirSessionSchema = mongoose.Schema(
             type: Boolean,
             default: false,
           },
+          absenceReason: {
+            type: String,
+            enum: ['absent_with_permission', 'long_period_permission', 'no_permission', null],
+            default: null,
+          },
         },
       ],
       sessionDate: {

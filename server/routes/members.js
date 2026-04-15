@@ -8,7 +8,7 @@ router.post('/members', authMiddleware, adminMiddleware,  async (req, res) => {
     try {
 
 
-        let { name, phone, email } = req.body.data;
+        let { name, phone, email, joinDate } = req.body.data;
 
         console.log('Type of Email:', typeof req.body.data.email);
 
@@ -30,7 +30,7 @@ router.post('/members', authMiddleware, adminMiddleware,  async (req, res) => {
             return res.status(409).json({ message: "Phone or email already exists." });
         }
 
-        const newMember = new Member({ name, phone, email });
+        const newMember = new Member({ name, phone, email, joinDate: joinDate || null });
 
         await newMember.save();
 
@@ -74,7 +74,7 @@ router.get('/members', authMiddleware, adminMiddleware, async (req, res) => {
 router.patch('/members/:id', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, phone, email } = req.body.data;
+        const { name, phone, email, joinDate, minimumContribution } = req.body.data;
 
         // Find the existing member
         const member = await Member.findById(id);
@@ -98,6 +98,8 @@ router.patch('/members/:id', authMiddleware, adminMiddleware, async (req, res) =
         if (name) member.name = name;
         if (phone) member.phone = phone;
         if (email) member.email = email;
+        member.joinDate = joinDate ? new Date(joinDate) : member.joinDate;
+        if (minimumContribution !== undefined) member.minimumContribution = minimumContribution;
 
         await member.save();
 

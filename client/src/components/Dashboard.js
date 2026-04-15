@@ -10,7 +10,9 @@ import {
     Modal,
     DatePicker,
     Checkbox,
+    Radio,
     Select,
+    Tooltip,
     Row,
     Col,
     Space,
@@ -20,16 +22,18 @@ import {
 
 import {useNavigate } from 'react-router-dom';
 import {
-  HomeOutlined,
+  DashboardOutlined,
   LogoutOutlined,
   ScheduleOutlined,
   PlusOutlined,
   EditOutlined,
   TeamOutlined,
+  InfoCircleOutlined,
+  DollarOutlined,
+  PrinterOutlined,
+  EyeOutlined,
 }from '@ant-design/icons';
 import moment from 'moment';
-
-import * as emoji from 'node-emoji'
 
 import axios from 'axios';
 import { Stats } from './Stats';
@@ -41,10 +45,10 @@ const { Search } = Input;
 const {RangePicker} = DatePicker;
 
 const baseURL = process.env.REACT_APP_API_BASE;
-const testPhase = process.env.REACT_APP_TEST_PHASE;
+const testPhase = process.env.REACT_APP_TEST_PHASE === 'true';
 
 function Dashboard() {
-  const [selectedKey, setSelectedKey] = useState('home');
+  const [selectedKey, setSelectedKey] = useState('dashboard');
   const [activeMembers, setActiveMembers] = useState([]);
   const [choirSessions, setChoirSessions] = useState([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -52,10 +56,12 @@ function Dashboard() {
   const [deleteMemberModalOpen, setDeleteMemberModalOpen] = useState(false);
   const [deleteSelectedMember, setDeleteSelectedMember] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState({});
+  const [absenceReasons, setAbsenceReasons] = useState({});
   const [selectSessionType, setSelectSessionType] = useState('');
   const [editSessionType, setEditSessionType] = useState('');
   const [editMemberId, setEditMemberId] = useState(null);
   const [editMemberAttended, setEditMemberAttended] = useState(null);
+  const [editAbsenceReason, setEditAbsenceReason] = useState(null);
   const [editAttendanceModalVisible, setEditAttendanceModalVisible] = useState(false);
   const [editMemberModalVisible, setEditMemberModalVisible] = useState(false);
 
@@ -83,11 +89,47 @@ function Dashboard() {
     moment().endOf('month')
   ]);
 
+  const [sessionDateRange, setSessionDateRange] = useState([
+    moment().startOf('month'),
+    moment().endOf('month')
+  ]);
+
   const [statsSessionType, setStatsSessionType] = useState('rehearsal');
 
   const [searchText, setSearchText] = useState('');
 
   const [sessionAttendeeSearchText, setSessionAttendeeSearchText] = useState('');
+  const [attendanceFilter, setAttendanceFilter] = useState(null);
+
+  // Contributions
+  const [contributions, setContributions] = useState([]);
+  const [contributionYear, setContributionYear] = useState(moment());
+  const [contributionStats, setContributionStats] = useState({ totalPaid: 0, totalUnpaid: 0 });
+  const [homeContribRange, setHomeContribRange] = useState([moment().startOf('month'), moment()]);
+  const [addContributionVisible, setAddContributionVisible] = useState(false);
+  const [editContributionVisible, setEditContributionVisible] = useState(false);
+  const [selectedContribution, setSelectedContribution] = useState(null);
+  const [contributionSearchText, setContributionSearchText] = useState('');
+  const [contributionForm] = Form.useForm();
+  const [viewContribVisible, setViewContribVisible] = useState(false);
+  const [viewContribMember, setViewContribMember] = useState(null);
+  const [memberContributions, setMemberContributions] = useState([]);
+  const [viewContribSearch, setViewContribSearch] = useState('');
+  const [viewContribLoading, setViewContribLoading] = useState(false);
+  const [editSingleVisible, setEditSingleVisible] = useState(false);
+  const [selectedSingle, setSelectedSingle] = useState(null);
+  const [singleContribForm] = Form.useForm();
+  const [addContribInModalVisible, setAddContribInModalVisible] = useState(false);
+  const [addContribInModalForm] = Form.useForm();
+
+  const MONTHS = [
+    { value: 1, label: 'January' }, { value: 2, label: 'February' },
+    { value: 3, label: 'March' },   { value: 4, label: 'April' },
+    { value: 5, label: 'May' },     { value: 6, label: 'June' },
+    { value: 7, label: 'July' },    { value: 8, label: 'August' },
+    { value: 9, label: 'September' },{ value: 10, label: 'October' },
+    { value: 11, label: 'November' },{ value: 12, label: 'December' },
+  ];
 
   const showMsg = (type, content) =>{
     messageApi.open({type,content})
@@ -106,10 +148,14 @@ function Dashboard() {
   useEffect(() => {
     if (selectedKey === 'activeMembers') {
       fetchActiveMembers();
-    }else if(selectedKey === 'choirSessions'){
-      fetchChoirSessions()
-    }else if(selectedKey === 'home'){
+    } else if (selectedKey === 'choirSessions') {
+      fetchChoirSessions();
+    } else if (selectedKey === 'dashboard') {
       getChoirStats();
+      fetchContributionStats();
+    } else if (selectedKey === 'contributions') {
+      fetchContributions();
+      fetchActiveMembers();
     }
   }, [selectedKey]);
 
@@ -165,21 +211,247 @@ function Dashboard() {
     }
   };
 
-  const fetchChoirSessions = async () => {
+  const fetchChoirSessions = async (range = sessionDateRange) => {
     setLoading(true);
     try {
-      const response = await api.get('/api/v1/choir-sessions');
-      const choirSessionData = response.data;
-      setChoirSessions(choirSessionData);
+      const fromDate = range?.[0]?.format('YYYY-MM-DD') ?? '';
+      const toDate = range?.[1]?.format('YYYY-MM-DD') ?? '';
+      const response = await api.get('/api/v1/choir-sessions', { params: { fromDate, toDate } });
+      setChoirSessions(response.data);
     } catch (error) {
-      console.error('Error fetching active members:', error);
-    }finally{
+      console.error('Error fetching choir sessions:', error);
+    } finally {
       setLoading(false);
+    }
+  };
 
+  const fetchContributionStats = async (range = homeContribRange) => {
+    try {
+      const fromDate = range?.[0]?.format('YYYY-MM-DD') ?? '';
+      const toDate = range?.[1]?.format('YYYY-MM-DD') ?? '';
+      const response = await api.get('/api/v1/contributions/stats', { params: { fromDate, toDate } });
+      setContributionStats(response.data);
+    } catch (error) {
+      console.error('Error fetching contribution stats:', error);
+    }
+  };
+
+  const fetchContributions = async (year = contributionYear) => {
+    setLoading(true);
+    try {
+      const response = await api.get('/api/v1/contributions/summary', {
+        params: { year: year && typeof year.year === 'function' ? year.year() : Number(year) || new Date().getFullYear() },
+      });
+      setContributions(response.data);
+    } catch (error) {
+      console.error('Error fetching contributions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitAddContribution = async () => {
+    try {
+      const values = await contributionForm.validateFields();
+      const memberId = values.memberId;
+      // Always update the monthly minimum on the member
+      await api.patch(`/api/v1/members/${memberId}`, {
+        data: { minimumContribution: Number(values.minimumContribution) },
+      });
+      // Record the payment
+      await api.post('/api/v1/contributions', {
+        data: {
+          memberId,
+          paidAmount: Number(values.paidAmount),
+          payDate: values.payDate ? values.payDate.format('YYYY-MM-DD') : null,
+        },
+      });
+      showMsg('success', 'Contribution recorded.');
+      contributionForm.resetFields();
+      setAddContributionVisible(false);
+      setSelectedContribution(null);
+      fetchContributions();
+    } catch (error) {
+      showMsg('error', error?.response?.data?.message || 'Failed to save contribution.');
+    }
+  };
+
+  const fetchMemberContributions = async (memberId) => {
+    setViewContribLoading(true);
+    try {
+      const year = contributionYear && typeof contributionYear.year === 'function' ? contributionYear.year() : Number(contributionYear) || new Date().getFullYear();
+      const response = await api.get(`/api/v1/contributions/member-records/${memberId}`, { params: { year } });
+      setMemberContributions(response.data);
+    } catch (error) {
+      console.error('Error fetching member contributions:', error);
+      showMsg('error', error?.response?.data?.message || 'Failed to load contribution records.');
+    } finally {
+      setViewContribLoading(false);
+    }
+  };
+
+  const submitAddContribInModal = async () => {
+    try {
+      const values = await addContribInModalForm.validateFields();
+      const year = contributionYear && typeof contributionYear.year === 'function' ? contributionYear.year() : Number(contributionYear) || new Date().getFullYear();
+      const payDate = `${year}-${String(values.month).padStart(2, '0')}-01`;
+      const memberId = viewContribMember.member._id;
+      await Promise.all([
+        api.patch(`/api/v1/members/${memberId}`, {
+          data: { minimumContribution: Number(values.minimumContribution) },
+        }),
+        api.post('/api/v1/contributions', {
+          data: { memberId, paidAmount: Number(values.amount), payDate },
+        }),
+      ]);
+      showMsg('success', 'Contribution recorded.');
+      addContribInModalForm.resetFields();
+      setAddContribInModalVisible(false);
+      fetchMemberContributions(memberId);
+      fetchContributions();
+    } catch (error) {
+      showMsg('error', error?.response?.data?.message || 'Failed to record contribution.');
+    }
+  };
+
+  const openViewContrib = (record) => {
+    setViewContribMember(record);
+    setMemberContributions([]);
+    setViewContribSearch('');
+    fetchMemberContributions(record.member._id);
+    setViewContribVisible(true);
+  };
+
+  const submitEditSingleContribution = async () => {
+    try {
+      const values = await singleContribForm.validateFields();
+      const year = contributionYear && typeof contributionYear.year === 'function' ? contributionYear.year() : Number(contributionYear) || new Date().getFullYear();
+      const payDate = `${year}-${String(values.month).padStart(2, '0')}-01`;
+      await api.patch(`/api/v1/contributions/${selectedSingle._id}`, {
+        data: { paidAmount: Number(values.amount), payDate },
+      });
+      showMsg('success', 'Contribution updated.');
+      singleContribForm.resetFields();
+      setEditSingleVisible(false);
+      setSelectedSingle(null);
+      fetchMemberContributions(viewContribMember.member._id);
+      fetchContributions();
+    } catch (error) {
+      showMsg('error', error?.response?.data?.message || 'Failed to update.');
+    }
+  };
+
+  const deleteSingleContribution = async (record) => {
+    try {
+      await api.delete(`/api/v1/contributions/${record._id}`);
+      showMsg('success', 'Contribution deleted.');
+      fetchMemberContributions(viewContribMember.member._id);
+      fetchContributions();
+    } catch (error) {
+      showMsg('error', error?.response?.data?.message || 'Failed to delete.');
+    }
+  };
+
+  const submitEditContribution = async () => {
+    try {
+      const values = await contributionForm.validateFields();
+      const memberId = selectedContribution.member._id;
+      // Update monthly minimum
+      await api.patch(`/api/v1/members/${memberId}`, {
+        data: { minimumContribution: Number(values.minimumContribution) },
+      });
+      // Record a payment if paidAmount was filled in
+      if (values.paidAmount !== undefined && values.paidAmount !== '') {
+        await api.post('/api/v1/contributions', {
+          data: {
+            memberId,
+            paidAmount: Number(values.paidAmount),
+            payDate: values.payDate ? values.payDate.format('YYYY-MM-DD') : null,
+          },
+        });
+      }
+      showMsg('success', 'Updated.');
+      contributionForm.resetFields();
+      setEditContributionVisible(false);
+      setSelectedContribution(null);
+      fetchContributions();
+    } catch (error) {
+      showMsg('error', error?.response?.data?.message || 'Failed to update.');
     }
   };
 
 
+  const openPrintWindow = (html) => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.head.innerHTML = `<title>Print</title><style>
+      body { font-family: Arial, sans-serif; padding: 24px; color: #000; }
+      h2 { margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+      th { background: #f0f0f0; font-weight: 600; }
+      tr:nth-child(even) { background: #fafafa; }
+      @media print { body { padding: 0; } }
+    </style>`;
+    win.document.body.innerHTML = html;
+    win.focus();
+    win.print();
+  };
+
+  const printSessionsTable = () => {
+    const formatReason = r => {
+      if (!r) return '-';
+      return { absent_with_permission: 'Absent with permission', long_period_permission: 'Long period permission', no_permission: 'No permission' }[r] || r;
+    };
+    const rows = filteredTransformedSessionData.map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${r.member?.name || '-'}</td>
+        <td>${r.sessionType ? r.sessionType.charAt(0).toUpperCase() + r.sessionType.slice(1) : '-'}</td>
+        <td>${r.sessionDate ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(r.sessionDate)) : '-'}</td>
+        <td>${r.memberAttended ? '✓' : '✗'}</td>
+        <td>${formatReason(r.absenceReason)}</td>
+      </tr>`).join('');
+    openPrintWindow(`
+      <h2>Choir Sessions</h2>
+      <table>
+        <thead><tr><th>#</th><th>Member Name</th><th>Session Type</th><th>Session Date</th><th>Attended</th><th>Absence Reason</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`);
+  };
+
+  const printContributionsTable = () => {
+    const fmt = v => v !== undefined ? v.toLocaleString() : '-';
+    const fmtDate = t => t ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(t)) : '-';
+    const rows = contributions.map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${r.memberId?.name || '-'}</td>
+        <td>${fmtDate(r.payDate)}</td>
+        <td>${fmt(r.paidAmount)}</td>
+        <td>${fmt(r.unPaidAmount)}</td>
+        <td>${fmt(r.minimumAmount)}</td>
+      </tr>`).join('');
+    openPrintWindow(`
+      <h2>Contributions</h2>
+      <table>
+        <thead><tr><th>#</th><th>Member</th><th>Pay Date</th><th>Paid (RWF)</th><th>Unpaid (RWF)</th><th>Minimum (RWF)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`);
+  };
+
+  const printContributionReceipt = (r) => {
+    const memberName = viewContribMember?.member?.name || '-';
+    const month = r.payDate ? new Date(r.payDate).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }) : '-';
+    const year = r.payDate ? new Date(r.payDate).getUTCFullYear() : '-';
+    openPrintWindow(`
+      <h2>Contribution Receipt</h2>
+      <table>
+        <tr><th>Member</th><td>${memberName}</td></tr>
+        <tr><th>Month</th><td>${month} ${year}</td></tr>
+        <tr><th>Amount (RWF)</th><td>${r.paidAmount?.toLocaleString()}</td></tr>
+      </table>`);
+  };
 
   const handleLogout = async () => {
     try {
@@ -245,10 +517,13 @@ function Dashboard() {
   };
 
   const toggleMemberSelection = (id) => {
-    setSelectedMembers(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
+    setSelectedMembers(prev => {
+      const nowAttended = !prev[id];
+      if (nowAttended) {
+        setAbsenceReasons(r => { const next = { ...r }; delete next[id]; return next; });
+      }
+      return { ...prev, [id]: nowAttended };
+    });
   };
 
 
@@ -266,6 +541,7 @@ function Dashboard() {
 
   const handleEditMemberAttended= (value) => {
     setEditMemberAttended(value);
+    if (value) setEditAbsenceReason(null);
   };
 
   let filteredMembers = activeMembers.filter(member =>
@@ -278,13 +554,16 @@ function Dashboard() {
       member: member.member,
       sessionType: session.sessionType,
       sessionDate: session.sessionDate,
-      memberAttended: member.hasAttended
+      memberAttended: member.hasAttended,
+      absenceReason: member.absenceReason
     }))
   );
 
-  const filteredTransformedSessionData = transformedChoirSessionData.filter(({ member }) => {
+  const filteredTransformedSessionData = transformedChoirSessionData.filter(({ member, memberAttended }) => {
     if (!member || !member.name) return false;
-    return member.name.toLowerCase().includes(sessionAttendeeSearchText.toLowerCase());
+    if (!member.name.toLowerCase().includes(sessionAttendeeSearchText.toLowerCase())) return false;
+    if (attendanceFilter !== null && memberAttended !== attendanceFilter) return false;
+    return true;
   });
 
   const showEditSessionModal = async () => {
@@ -303,7 +582,8 @@ function Dashboard() {
   const showEditAttendanceModal = (record) => {
     setEditAttendanceModalVisible(true);
     setMemberName(record.member.name);
-    setEditMemberAttended(record.member.phone);
+    setEditMemberAttended(record.memberAttended);
+    setEditAbsenceReason(record.absenceReason || null);
     setEditMemberId(() => record.member._id);
   };
 
@@ -315,6 +595,7 @@ function Dashboard() {
         name: record.name,
         email: record.email,
         phone: record.phone,
+        joinDate: record.joinDate ? moment(record.joinDate) : null,
     });
   };
 
@@ -326,7 +607,8 @@ function Dashboard() {
       sessionDate: editSessionDate,
       sessionType: editSessionType,
       memberId: editMemberId,
-      hasAttended: editMemberAttended
+      hasAttended: editMemberAttended,
+      absenceReason: editMemberAttended ? null : editAbsenceReason
     }
     try {
       await api.patch(`/api/v1/choir-sessions/${sessionId}`, {data});
@@ -377,7 +659,8 @@ function Dashboard() {
     const data = {
       name: values.name,
       phone: values.phone,
-      email: values.email
+      email: values.email,
+      joinDate: values.joinDate ? values.joinDate.format('YYYY-MM-DD') : null,
     }
     try {
     const response = await api.post(`/api/v1/members`, {data});
@@ -414,7 +697,8 @@ const handleNewMemberFormChange = async () => {
     const data = {
       name: values.name,
       phone: values.phone,
-      email: values.email
+      email: values.email,
+      joinDate: values.joinDate ? values.joinDate.format('YYYY-MM-DD') : null,
     }
     try {
     const response = await api.patch(`/api/v1/members/${memberId}`, {data});
@@ -447,7 +731,8 @@ const handleNewMemberFormChange = async () => {
       sessionDate: formattedDate,
       members: Object.keys(selectedMembers).map(memberId => ({
         member: memberId,
-        hasAttended: selectedMembers[memberId]
+        hasAttended: selectedMembers[memberId],
+        absenceReason: selectedMembers[memberId] ? null : (absenceReasons[memberId] || null)
       }))
     };
 
@@ -465,6 +750,7 @@ const handleNewMemberFormChange = async () => {
       // Reset modal inputs
       setSelectSessionType(null);
       setSelectedMembers([]);
+      setAbsenceReasons({});
       setSelectedDate(null);
       setIsModalVisible(false);
 
@@ -485,6 +771,26 @@ const handleNewMemberFormChange = async () => {
     { title: 'Name', dataIndex: 'name', key: 'name' },
     { title: 'Phone', dataIndex: 'phone', key: 'phone' },
     {
+        title: 'Email',
+        dataIndex: 'email',
+        key: 'email',
+    },
+    {
+        title: 'Join Date',
+        dataIndex: 'joinDate',
+        key: 'joinDate',
+        render: (text) => {
+            if (!text) return '-';
+            const date = new Date(text);
+            if (isNaN(date)) return 'Invalid Date';
+            return new Intl.DateTimeFormat('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            }).format(date);
+        }
+    },
+    {
         title: 'Options',
         key: 'options',
         render: (text, record) => (
@@ -499,6 +805,12 @@ const handleNewMemberFormChange = async () => {
 
 
   const choirSessionColumns = [
+    {
+      title: '#',
+      key: 'count',
+      render: (_, __, index) => index + 1,
+      width: 50,
+    },
     {
       title: 'Member Name',
       dataIndex: 'member',
@@ -537,6 +849,26 @@ const handleNewMemberFormChange = async () => {
       render: (attended) => attended ? '✅' : '❌'
     },
     {
+      title: 'Absence Reason',
+      key: 'absenceReason',
+      render: (text, record) => {
+        if (record.memberAttended) {
+          return '-';
+        }
+        const reason = record.absenceReason || 'No reason provided';
+        switch (reason) {
+          case 'absent_with_permission':
+            return 'Absent with permission';
+          case 'long_period_permission':
+            return 'Long period permission';
+          case 'no_permission':
+            return 'No permission';
+          default:
+            return reason;
+        }
+      }
+    },
+    {
       title: 'Options',
       key: 'options',
       render: (text, record) => (
@@ -558,15 +890,21 @@ const handleNewMemberFormChange = async () => {
 
 
   const isSmallScreen = useIsSmallScreen();
+  const [siderCollapsed, setSiderCollapsed] = useState(false);
 
   const renderContent = () => {
 
     switch (selectedKey) {
-      case 'home':
+      case 'dashboard':
         return (
          <>
             {contextHolder}
-           <Stats choirStats={choirStats}>
+           <Stats
+              choirStats={choirStats}
+              contributionStats={contributionStats}
+              homeContribRange={homeContribRange}
+              onContribRangeChange={range => { setHomeContribRange(range); fetchContributionStats(range); }}
+            >
              <Row gutter={[16, 16]}>
                 <Col xs={24} sm={12} md={8}>
                   <RangePicker
@@ -646,7 +984,7 @@ const handleNewMemberFormChange = async () => {
               dataSource={filteredMembers}
               columns={choirMemberColumns}
               rowKey="id"
-              style={{ width: '70vw' }}
+              style={{ width: 'calc(70vw + 20px)' }}
               loading={loading}
               scroll={{ x: 'max-content' }}
             />
@@ -685,6 +1023,10 @@ const handleNewMemberFormChange = async () => {
                     <Input/>
                   </Form.Item>
 
+                  <Form.Item label="Join date" name="joinDate" labelCol={{span: 24}}>
+                    <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                  </Form.Item>
+
               </Form>
             </Modal>
 
@@ -714,6 +1056,10 @@ const handleNewMemberFormChange = async () => {
 
                       <Form.Item label="Phone" name="phone" labelCol={{span: 24}}>
                         <Input/>
+                      </Form.Item>
+
+                      <Form.Item label="Join date" name="joinDate" labelCol={{span: 24}}>
+                        <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
                       </Form.Item>
                 </Form>
             </Modal>
@@ -750,37 +1096,57 @@ const handleNewMemberFormChange = async () => {
                 </Title>
               </Col>
             
-              <Col xs={24} md={4}>
-                 <Space >
+              <Col xs={24}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                  <Space>
                     <Button
-                        variant="solid"
-                        color="green"
-                        onClick={showModal}
-                        icon={<PlusOutlined />}
-                        >
-                          Add session
-                        </Button>
-
+                      variant="solid"
+                      color="green"
+                      onClick={showModal}
+                      icon={<PlusOutlined />}
+                    >
+                      Add session
+                    </Button>
                     <Button
-                        type="primary"
-                        variant='solid'
-                        onClick={showEditSessionModal}
-                        icon={<EditOutlined />}
-                        >
-                          Edit session
-                        </Button>
+                      type="primary"
+                      variant='solid'
+                      onClick={showEditSessionModal}
+                      icon={<EditOutlined />}
+                    >
+                      Edit session
+                    </Button>
                   </Space>
-               </Col>
 
-              <Col xs={24} md={20}>
-                
-                <Search
-                  placeholder="Search member"
-                  onSearch={handleSessionAttendeeSearch}
-                  value={sessionAttendeeSearchText}
-                  onChange={(e) => setSessionAttendeeSearchText(e.target.value)}
-                  style={{ marginBottom: 16, width: isSmallScreen ? '100%' : '30%', float: 'right' }}
-                />
+                  <Space wrap>
+                    <RangePicker
+                      value={sessionDateRange}
+                      onChange={range => {
+                        setSessionDateRange(range);
+                        fetchChoirSessions(range);
+                      }}
+                      format="YYYY-MM-DD"
+                    />
+                    <Select
+                      placeholder="Attendance"
+                      allowClear
+                      value={attendanceFilter}
+                      onChange={val => setAttendanceFilter(val ?? null)}
+                      options={[
+                        { value: true, label: 'Present' },
+                        { value: false, label: 'Absent' },
+                      ]}
+                      style={{ width: 130 }}
+                    />
+                    <Search
+                      placeholder="Search member"
+                      onSearch={handleSessionAttendeeSearch}
+                      value={sessionAttendeeSearchText}
+                      onChange={(e) => setSessionAttendeeSearchText(e.target.value)}
+                      style={{ width: 200 }}
+                    />
+                    <Button icon={<PrinterOutlined />} onClick={printSessionsTable}>Print</Button>
+                  </Space>
+                </div>
               </Col>
             
             </Row>
@@ -788,7 +1154,7 @@ const handleNewMemberFormChange = async () => {
                 dataSource={filteredTransformedSessionData}
                 columns={choirSessionColumns}
                 rowKey="id"
-                style={{ width: '70vw' }}
+                style={{ width: 'calc(70vw + 20px)' }}
                 loading={loading}
                 scroll={{ x: 'max-content' }}
 
@@ -828,12 +1194,29 @@ const handleNewMemberFormChange = async () => {
                 />
 
               <Text style={{margin:'20px 0px', fontWeight: 'bold' }}>Attendance list</Text>
+              <Tooltip title="All members are marked as attended by default">
+                <InfoCircleOutlined style={{ marginLeft: 8, color: '#8c8c8c', cursor: 'default' }} />
+              </Tooltip>
 
-              <div style={{ maxHeight: '250px', overflowY: 'auto', marginTop:'19px' }}>
+              <div style={{ maxHeight: '300px', overflowY: 'auto', marginTop:'19px' }}>
                 {filteredMembers.map(member => (
                   <div key={member._id} style={{marginBottom: '10px'}}>
                     <Checkbox checked={!!selectedMembers[member._id]}
                       onChange={() => toggleMemberSelection(member._id)}>{member.name}</Checkbox>
+                    {!selectedMembers[member._id] && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, border: '1px solid #91caff', borderRadius: 6, padding: '6px 10px', backgroundColor: '#e6f4ff', flexWrap: 'nowrap' }}>
+                        <Text style={{ whiteSpace: 'nowrap', fontSize: 13, color: '#1677ff' }}>Reason:</Text>
+                        <Radio.Group
+                          style={{ display: 'flex', flexDirection: 'row', gap: 12 }}
+                          value={absenceReasons[member._id] || null}
+                          onChange={e => setAbsenceReasons(prev => ({ ...prev, [member._id]: e.target.value }))}
+                        >
+                          <Radio value="absent_with_permission" style={{ whiteSpace: 'nowrap' }}>Absent with permission</Radio>
+                          <Radio value="long_period_permission" style={{ whiteSpace: 'nowrap' }}>Long period permission</Radio>
+                          <Radio value="no_permission" style={{ whiteSpace: 'nowrap' }}>No permission</Radio>
+                        </Radio.Group>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -880,6 +1263,7 @@ const handleNewMemberFormChange = async () => {
                 open={editAttendanceModalVisible}
                 onOk={submitEditedSession}
                 onCancel={closeEditAttendanceModal}
+                width={600}
                 >
                 <Form>
                   <Form.Item label="Name" labelCol={{span: 24}}>
@@ -897,14 +1281,276 @@ const handleNewMemberFormChange = async () => {
                             { value: true, label: 'Yes' },
                             { value: false, label: 'No' }
                           ]}
-                          style={{width: '100%',  marginBottom: 16}}
-
+                          style={{width: '100%'}}
                         />
                     </Form.Item>
+
+                    {editMemberAttended === false && (
+                      <Form.Item label="Absence reason" labelCol={{span: 24}}>
+                        <div style={{ border: '1px solid #91caff', borderRadius: 6, padding: '8px 12px', backgroundColor: '#e6f4ff' }}>
+                          <Radio.Group
+                            style={{ display: 'flex', flexDirection: 'row', gap: 12, flexWrap: 'nowrap' }}
+                            value={editAbsenceReason}
+                            onChange={e => setEditAbsenceReason(e.target.value)}
+                          >
+                            <Radio value="absent_with_permission" style={{ whiteSpace: 'nowrap' }}>Absent with permission</Radio>
+                            <Radio value="long_period_permission" style={{ whiteSpace: 'nowrap' }}>Long period permission</Radio>
+                            <Radio value="no_permission" style={{ whiteSpace: 'nowrap' }}>No permission</Radio>
+                          </Radio.Group>
+                        </div>
+                      </Form.Item>
+                    )}
                 </Form>
               </Modal>
           </>
         );
+      case 'contributions':
+        return (
+          <>
+            {contextHolder}
+            <Title level={2}>Contributions</Title>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              <Space>
+                <Search
+                  placeholder="Search member"
+                  value={contributionSearchText}
+                  onChange={e => setContributionSearchText(e.target.value)}
+                  style={{ width: 200 }}
+                />
+                <DatePicker
+                  picker="year"
+                  value={contributionYear}
+                  onChange={y => { setContributionYear(y); fetchContributions(y); }}
+                />
+                <Button icon={<PrinterOutlined />} onClick={printContributionsTable}>Print</Button>
+              </Space>
+            </div>
+
+            <Table
+              rowKey="_id"
+              loading={loading}
+              dataSource={contributions.filter(r =>
+                r.member?.name?.toLowerCase().includes(contributionSearchText.toLowerCase())
+              )}
+              columns={[
+                { title: '#', key: 'count', render: (_, __, i) => i + 1, width: 45 },
+                { title: 'Member', key: 'member', render: (_, r) => r.member?.name || '-', width: 170 },
+                { title: 'Min/Mo. (RWF)', dataIndex: 'minimumContribution', key: 'minimumContribution', render: v => v?.toLocaleString(), width: 115 },
+                { title: 'Months', dataIndex: 'monthsElapsed', key: 'monthsElapsed', width: 85 },
+                { title: 'Contributions', dataIndex: 'contributionCount', key: 'contributionCount', width: 115 },
+                { title: 'Total Paid (RWF)', dataIndex: 'totalPaid', key: 'totalPaid', render: v => v?.toLocaleString(), width: 130 },
+                { title: 'Unpaid (RWF)', dataIndex: 'unPaidAmount', key: 'unPaidAmount', render: v => v?.toLocaleString(), width: 115 },
+                {
+                  title: 'Options',
+                  key: 'options',
+                  width: 80,
+                  render: (_, record) => (
+                    <Tooltip title="View contributions">
+                      <Button type="primary" icon={<EyeOutlined />} onClick={() => openViewContrib(record)} />
+                    </Tooltip>
+                  ),
+                },
+              ]}
+            />
+
+            {/* Add contribution modal */}
+            <Modal
+              title="Add Contribution"
+              open={addContributionVisible}
+              onOk={submitAddContribution}
+              onCancel={() => { contributionForm.resetFields(); setAddContributionVisible(false); }}
+              width={500}
+            >
+              <Form form={contributionForm} layout="vertical">
+                <Form.Item label="Member" name="memberId" rules={[{ required: true, message: 'Member is required.' }]}>
+                  <Select
+                    showSearch
+                    placeholder="Select member"
+                    optionFilterProp="label"
+                    options={activeMembers.map(m => ({ value: m._id, label: m.name }))}
+                  />
+                </Form.Item>
+                <Form.Item label="Monthly Minimum (RWF)" name="minimumContribution" rules={[{ required: true, message: 'Required.' }, { type: 'number', min: 0, message: 'Must be >= 0.', transform: v => Number(v) }]}>
+                  <Input type="number" min={0} />
+                </Form.Item>
+                 <Form.Item label="Paid Amount (RWF)" name="paidAmount" rules={[{ required: true, message: 'Required.' }, { type: 'number', min: 0, message: 'Must be >= 0.', transform: v => Number(v) }]}>
+                  <Input type="number" min={0} />
+                </Form.Item>
+                <Form.Item label="Pay Date" name="payDate">
+                  <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                </Form.Item>
+              </Form>
+            </Modal>
+
+            {/* Edit member minimum contribution modal */}
+            <Modal
+              title={`Edit — ${selectedContribution?.member?.name || ''}`}
+              open={editContributionVisible}
+              onOk={submitEditContribution}
+              onCancel={() => { contributionForm.resetFields(); setEditContributionVisible(false); setSelectedContribution(null); }}
+              width={400}
+            >
+              <Form form={contributionForm} layout="vertical">
+                <Form.Item label="Monthly Minimum (RWF)" name="minimumContribution" rules={[{ required: true, message: 'Required.' }, { type: 'number', min: 0, message: 'Must be >= 0.', transform: v => Number(v) }]}>
+                  <Input type="number" min={0} />
+                </Form.Item>
+                <Form.Item label="Pay Date" name="payDate">
+                  <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                </Form.Item>
+                <Form.Item label="Paid Amount (RWF)" name="paidAmount" rules={[{ type: 'number', min: 0, message: 'Must be >= 0.', transform: v => Number(v) }]}>
+                  <Input type="number" min={0} placeholder="Leave empty to skip recording a payment" />
+                </Form.Item>
+              </Form>
+            </Modal>
+
+            {/* View member contributions modal */}
+            <Modal
+              title={`${viewContribMember?.member?.name || ''} — Contributions ${contributionYear && typeof contributionYear.year === 'function' ? contributionYear.year() : (Number(contributionYear) || '')}`}
+              open={viewContribVisible}
+              onCancel={() => { setViewContribVisible(false); setMemberContributions([]); setViewContribMember(null); setViewContribSearch(''); }}
+              footer={null}
+              width={700}
+            >
+              {/* Toolbar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => { addContribInModalForm.resetFields(); setAddContribInModalVisible(true); }}
+                >
+                  New Contribution
+                </Button>
+                <Search
+                  placeholder="Search month or amount"
+                  value={viewContribSearch}
+                  onChange={e => setViewContribSearch(e.target.value)}
+                  style={{ width: 220 }}
+                  allowClear
+                />
+              </div>
+
+              {/* Summary chips */}
+              <Row gutter={12} style={{ marginBottom: 16 }}>
+                <Col span={12}>
+                  <div style={{ background: '#f0f5ff', border: '1px solid #adc6ff', borderRadius: 6, padding: '8px 14px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#595959' }}>Contributions this year</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#1d39c4' }}>{memberContributions.length}</div>
+                  </div>
+                </Col>
+                <Col span={12}>
+                  <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, padding: '8px 14px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 11, color: '#595959' }}>Total Paid this year (RWF)</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#389e0d' }}>
+                      {memberContributions.reduce((s, c) => s + (c.paidAmount || 0), 0).toLocaleString()}
+                    </div>
+                  </div>
+                </Col>
+              </Row>
+
+              <Table
+                rowKey="_id"
+                loading={viewContribLoading}
+                dataSource={memberContributions.filter(c => {
+                  if (!viewContribSearch) return true;
+                  const s = viewContribSearch.toLowerCase();
+                  const monthStr = c.payDate ? new Date(c.payDate).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }).toLowerCase() : '';
+                  return monthStr.includes(s) || String(c.paidAmount).includes(s);
+                })}
+                scroll={{ x: 'max-content' }}
+                pagination={{ pageSize: 5, showSizeChanger: true, pageSizeOptions: ['5', '10', '25'], showTotal: (total, range) => `Showing ${range[0]} to ${range[1]} of ${total} entries` }}
+                columns={[
+                  { title: '#', key: 'count', render: (_, __, i) => i + 1, width: 50 },
+                  {
+                    title: 'Month',
+                    dataIndex: 'payDate',
+                    key: 'month',
+                    render: t => t ? new Date(t).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }) : '-',
+                    sorter: (a, b) => new Date(a.payDate) - new Date(b.payDate),
+                    defaultSortOrder: 'ascend',
+                  },
+                  {
+                    title: 'Min/Mo. (RWF)',
+                    key: 'minimumContribution',
+                    render: () => viewContribMember?.minimumContribution?.toLocaleString() ?? '-',
+                  },
+                  {
+                    title: 'Amount Paid (RWF)',
+                    dataIndex: 'paidAmount',
+                    key: 'paidAmount',
+                    render: v => v?.toLocaleString(),
+                    sorter: (a, b) => a.paidAmount - b.paidAmount,
+                  },
+                  {
+                    title: 'Actions',
+                    key: 'actions',
+                    render: (_, record) => (
+                      <Space>
+                        <Tooltip title="Edit">
+                          <Button
+                            icon={<EditOutlined />}
+                            onClick={() => {
+                              setSelectedSingle(record);
+                              singleContribForm.setFieldsValue({
+                                month: record.payDate ? new Date(record.payDate).getUTCMonth() + 1 : null,
+                                amount: record.paidAmount,
+                              });
+                              setEditSingleVisible(true);
+                            }}
+                          />
+                        </Tooltip>
+                        <Tooltip title="Print receipt">
+                          <Button icon={<PrinterOutlined />} onClick={() => printContributionReceipt(record)} />
+                        </Tooltip>
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
+            </Modal>
+
+            {/* New contribution (inside view modal) */}
+            <Modal
+              title={`New Contribution — ${viewContribMember?.member?.name || ''} (${contributionYear && typeof contributionYear.year === 'function' ? contributionYear.year() : (Number(contributionYear) || '')})`}
+              open={addContribInModalVisible}
+              onOk={submitAddContribInModal}
+              okText="Save"
+              onCancel={() => { addContribInModalForm.resetFields(); setAddContribInModalVisible(false); }}
+              width={400}
+            >
+              <Form form={addContribInModalForm} layout="vertical" style={{ marginTop: 16 }}>
+                <Form.Item label="Month" name="month" rules={[{ required: true, message: 'Month is required.' }]}>
+                  <Select placeholder="Select month" options={MONTHS} style={{ width: '100%' }} />
+                </Form.Item>
+                <Form.Item label="Minimum Contribution/Month (RWF)" name="minimumContribution" rules={[{ required: true, message: 'Required.' }, { type: 'number', min: 0, message: 'Must be >= 0.', transform: v => Number(v) }]}>
+                  <Input type="number" min={0} />
+                </Form.Item>
+                <Form.Item label="Amount Paid (RWF)" name="amount" rules={[{ required: true, message: 'Amount is required.' }, { type: 'number', min: 1, message: 'Must be > 0.', transform: v => Number(v) }]}>
+                  <Input type="number" min={1} />
+                </Form.Item>
+              </Form>
+            </Modal>
+
+            {/* Edit single contribution */}
+            <Modal
+              title="Edit Contribution"
+              open={editSingleVisible}
+              onOk={submitEditSingleContribution}
+              onCancel={() => { singleContribForm.resetFields(); setEditSingleVisible(false); setSelectedSingle(null); }}
+              width={400}
+            >
+              <Form form={singleContribForm} layout="vertical" style={{ marginTop: 16 }}>
+                <Form.Item label="Month" name="month" rules={[{ required: true, message: 'Month is required.' }]}>
+                  <Select placeholder="Select month" options={MONTHS} style={{ width: '100%' }} />
+                </Form.Item>
+                <Form.Item label="Amount (RWF)" name="amount" rules={[{ required: true, message: 'Amount is required.' }, { type: 'number', min: 1, message: 'Must be > 0.', transform: v => Number(v) }]}>
+                  <Input type="number" min={1} />
+                </Form.Item>
+              </Form>
+            </Modal>
+          </>
+        );
+
       default:
         return <Title level={2}>Select a menu item</Title>;
     }
@@ -912,14 +1558,28 @@ const handleNewMemberFormChange = async () => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" collapsible breakpoint="md">
-        <div style={{ padding: '16px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <Title level={4} style={{ color: '#fff', margin: 0, letterSpacing: 1 }}>AttendMon</Title>
+      <Sider theme="dark" collapsible breakpoint="md" onCollapse={setSiderCollapsed}>
+        <div style={{ padding: siderCollapsed ? '8px' : '16px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+          <Title
+            level={4}
+            style={{
+              color: '#fff',
+              margin: 0,
+              letterSpacing: siderCollapsed ? 0 : 1,
+              fontSize: siderCollapsed ? 11 : undefined,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            AttendMon
+          </Title>
         </div>
         <Menu theme="dark" mode="inline" selectedKeys={[selectedKey]} onClick={handleMenuClick}>
-          <Menu.Item key="home" icon={<HomeOutlined />}>Home</Menu.Item>
+          <Menu.Item key="dashboard" icon={<DashboardOutlined />}>Dashboard</Menu.Item>
           <Menu.Item key="activeMembers" icon={<TeamOutlined />}>Active Members</Menu.Item>
           <Menu.Item key="choirSessions" icon={<ScheduleOutlined />}>Choir sessions</Menu.Item>
+          <Menu.Item key="contributions" icon={<DollarOutlined />}>Contributions</Menu.Item>
           <Menu.Item
             type="default"
             icon={<LogoutOutlined />}
@@ -930,7 +1590,7 @@ const handleNewMemberFormChange = async () => {
         </Menu>
       </Sider>
       <Layout>
-        <Content style={{ padding: '24px', width: '70vw', margin: 'auto' }}>{renderContent()}</Content>
+        <Content style={{ padding: '24px', width: 'calc(70vw + 20px)', margin: 'auto' }}>{renderContent()}</Content>
       </Layout>
     </Layout>
   );

@@ -23,6 +23,15 @@ const memberSchema = mongoose.Schema(
             type: String,
             default: null,
         },
+        joinDate: {
+            type: Date,
+            default: null,
+        },
+        minimumContribution: {
+            type: Number,
+            default: 0,
+            min: [0, 'Minimum contribution must be >= 0'],
+        },
         isAdmin: {
             type: Boolean,
             default: false,
